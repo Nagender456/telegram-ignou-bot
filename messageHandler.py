@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore")
 
 class MessageHandler:
 	def __init__(self):
-		self.botName = "yati"
+		self.botName = "ritu"
 		self.response = []
 		self.possibleCommands = [
 			"result", "marks", "grade", "grades", "gradecard", 
