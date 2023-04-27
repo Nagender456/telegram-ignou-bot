@@ -12,7 +12,10 @@ def main():
 
 	@teleBot.on(events.NewMessage(incoming=True))
 	async def handleMessage(event):
-		responses = await messageHandler.handleMessage(event)
+		try:
+			responses = await messageHandler.handleMessage(event)
+		except Exception as e:
+			await event.reply(f"An Error Occurred\n\n{e}")
 		for response in responses:
 			if response[0] == 0:
 				await event.respond(response[2])

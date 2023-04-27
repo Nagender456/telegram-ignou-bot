@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore")
 
 class MessageHandler:
 	def __init__(self):
-		self.botName = "ritu"
+		self.botName = "pitu"
 		self.response = []
 		self.possibleCommands = [
 			"result", "marks", "grade", "grades", "gradecard", 
@@ -12,10 +12,11 @@ class MessageHandler:
 			"enrolment", "enrol",
 			"date", "datesheet",
 			"sub", "subject",
-			"center", "centre"]
+			"saveme", "me"]
 
 	async def handleMessage(self, event):
 		self.message = event.message.message.lower()
+		self.event = event
 		# Check if mentioned, return if not
 		mentioned = await self.isMentioned() or event.mentioned
 		if not mentioned: 
@@ -29,7 +30,10 @@ class MessageHandler:
 
 		# Return if command didn"t match
 		if command is None:
-			return [(1, None, "Sorry! I did not understand")]
+			requiredMessage = "Sorry! I did not understand!\n\n"
+			requiredMessage += "**Possible Commands:**\n"
+			requiredMessage += '`' + "\n".join(sorted(self.possibleCommands)) + '`'
+			return [(1, None, requiredMessage)]
 		
 		self.response = []
 
@@ -45,7 +49,7 @@ class MessageHandler:
 			self.response.append(requiredResponse)
 		
 		elif command in ["enrolment", "enrol"]:
-			requiredResponse = self.getEnrolmentResponse(dataParts)
+			requiredResponse = await self.getEnrolmentResponse(dataParts)
 			self.response.append(requiredResponse)
 		
 		elif command in ["datesheet", "date"]:
@@ -56,54 +60,60 @@ class MessageHandler:
 			requiredResponse = self.getSubjectDetailResponse(dataParts)
 			self.response.append(requiredResponse)
 		
-		elif command in ["center", "centre"]:
-			requiredResponse = await self.getExamCenterResponse(dataParts)
+		elif command in ["saveme"]:
+			requiredResponse = await self.setNameInTelegram(dataParts)
 			self.response.append(requiredResponse)
 		
+		elif command in ["me"]:
+			requiredResponse = await self.getNameFromTelegramResponse()
+			self.response.append(requiredResponse)
+
 		# elif command in ["result"]:
 		# 	resultResponse = await self.getResultResponse(dataParts)
 		# 	self.response.append(resultResponse)
 
-		return self.response
 
-	async def getExamCenterResponse(self, dataParts):
-		studentName = []
-		for dataPart in dataParts:
-			studentName.append(dataPart)
-		studentName = " ".join(studentName)
-		enrolmentNumber = self.getEnrolmentNumber(studentName)
-		if enrolmentNumber is None:
-			return (1, None, "Enrolment not found!")
-		examCenterResponse = await self.getExamCenter(enrolmentNumber)
-		if examCenterResponse is None:
-			return (1, None, "Couldn't get exam center!")
-		examCenterResponse = self.formatExamCenterResponse(examCenterResponse)
-		return (1, None, examCenterResponse)
+		return self.response
 	
-	async def getExamCenter(self, enrolmentNumber):
-		import requests
-		from bs4 import BeautifulSoup
-		URL = f"https://admission.ignou.ac.in/changeadmdata/StatusExam.asp?submit=1&enrno={enrolmentNumber}&program=BCA"
-		urlResponse = requests.post(URL, verify=False)
-		htmlParser = BeautifulSoup(urlResponse.text, "html.parser")
+	async def setNameInTelegram(self, dataParts):
 		try:
-			dataElements = htmlParser.find_all("tr", class_="td2")[-1].find_all('td')
-			centerCode, centerName = dataElements[1].text.split(':')
-			subjectsFilled = dataElements[2].text
-			studentName = "Unknown"
-			try:
-				studentName = await self.getStudentName(enrolmentNumber)
-			except:
-				pass
-			return studentName, centerCode, centerName, subjectsFilled
-		except:
-			return None
+			senderName = ' '.join(dataParts)
+			if len(senderName) < 3:
+				return (1, None, "`Name is Invalid!`")
+			sender = await self.event.get_sender()
+			senderId = str(sender.id)
+			savedUsersDict = dict()
+			with open('saved-users.txt', 'r') as file:
+				savedUsers = [x.strip() for x in file.readlines()]
+				for user in savedUsers:
+					teleId, teleName = user.split()[0], ' '.join(user.split()[1:])
+					savedUsersDict[teleId] = teleName
+			savedUsersDict[senderId] = senderName
+			with open('saved-users.txt', 'w') as file:
+				for userId, userName in savedUsersDict.items():
+					line = userId + ' ' + userName + '\n'
+					file.write(line)
+			return (1, None, f"Successfully linked name **{senderName.capitalize()}** to your Telegram Id!")
+		except Exception as e:
+			return (1, None, "`Something went wrong!`")
+		
+	async def getNameFromTelegramResponse(self):
+		requiredName = await self.getNameFromTelegram()
+		if requiredName is None:
+			return (1, None, "You're not in my record!")
+		return (1, None, f"You're {requiredName.capitalize()}")
 	
-	def formatExamCenterResponse(self, examCenterResponse):
-		studentName, centerCode, centerName, subjectsFilled = examCenterResponse
-		subjects = "\n".join([f"{i+1}.) {subject}" for i, subject in enumerate(subjectsFilled.split())])
-		requiredResponse = f"**{studentName}**\n\nCentre chosen:\n`{centerName} ({centerCode})`\n\nSubjects:\n`{subjects}`"
-		return requiredResponse
+	async def getNameFromTelegram(self):
+		sender = await self.event.get_sender()
+		senderId = str(sender.id)
+		savedUsersDict = dict()
+		with open('saved-users.txt', 'r') as file:
+			savedUsers = [x.strip() for x in file.readlines()]
+			for user in savedUsers:
+				teleId, teleName = user.split()[0], ' '.join(user.split()[1:])
+				savedUsersDict[teleId] = teleName
+		senderName = savedUsersDict.get(senderId, None)
+		return senderName
 
 	def getDateSheetResponse(self, dataParts):
 		subjects = []
@@ -224,7 +234,8 @@ class MessageHandler:
 			return (1, None, None)
 
 		studentName = " ".join(studentName)
-		enrolmentNumber = self.getEnrolmentNumber(studentName)
+		enrolmentNumber = await self.getEnrolmentNumber(studentName)
+		studentName = await self.getStudentName(enrolmentNumber)
 
 		if enrolmentNumber is None:
 			return (1, None, "`Enrolment not found!`")
@@ -270,7 +281,7 @@ class MessageHandler:
 		if len(studentName) < 1:
 			return (1, None, "`Make sure to include Name or Enrolment!`")
 
-		enrolmentNumber = self.getEnrolmentNumber(studentName)
+		enrolmentNumber = await self.getEnrolmentNumber(studentName)
 		if enrolmentNumber is None:
 			return (1, None, "`Enrolment not found!`")
 
@@ -362,25 +373,27 @@ class MessageHandler:
 		requiredResponse = "**" + studentName + "**\n\n" + "`" + requiredResponse + "\n" + percentage + "`"
 		return requiredResponse.strip()
 
-	def getEnrolmentResponse(self, dataParts):
+	async def getEnrolmentResponse(self, dataParts):
 		studentName = " ".join(dataParts)
 		response = None
 		if len(studentName) < 1:
 			response = "`Invalid Input!`"
 		else:
-			enrolmentNumber = self.getEnrolmentNumber(studentName)
+			enrolmentNumber = await self.getEnrolmentNumber(studentName)
 			if enrolmentNumber is None:
 				response = "`Not Found!`"
 			else:
 				response = '`'+enrolmentNumber+'`'
 		return (1, None, response)
 
-	def getEnrolmentNumber(self, studentName):
+	async def getEnrolmentNumber(self, studentName):
 		if studentName.isdigit():
 			if len(studentName) != 10:
 				return None
 			else:
 				return studentName
+		if studentName == 'me':
+			studentName = await self.getNameFromTelegram()
 		enrolmentNumber = None
 		with open("./data/ignou/enrolments.txt", "r") as file:
 			lines = file.readlines()
@@ -396,7 +409,7 @@ class MessageHandler:
 		if len(studentName) < 1:
 			response = "`Invalid Input!`"
 		else:
-			enrolmentNumber = self.getEnrolmentNumber(studentName)
+			enrolmentNumber = await self.getEnrolmentNumber(studentName)
 			if enrolmentNumber is None:
 				response = "`Not Found!`"
 			else:
@@ -456,7 +469,7 @@ class MessageHandler:
 			if curPart in self.possibleCommands:
 				if command is None:
 					command = curPart
-				continue
+					continue
 			dataParts.append(curPart)
 		return command, dataParts
 
@@ -492,7 +505,6 @@ class MessageHandler:
 				word = word.strip()
 				if len(word) < 3: return curDate
 				if isDate(word):
-					print("here")
 					curDate = word
 					file.write(f"\n{curDate} ")
 					return curDate
