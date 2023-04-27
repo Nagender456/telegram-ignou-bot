@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore")
 
 class MessageHandler:
 	def __init__(self):
-		self.botName = "ritu"
+		self.botName = "pitu"
 		self.response = []
 		self.possibleCommands = [
 			"result", "marks", "grade", "grades", "gradecard", 
@@ -100,7 +100,7 @@ class MessageHandler:
 	async def getNameFromTelegramResponse(self):
 		requiredName = await self.getNameFromTelegram()
 		if requiredName is None:
-			return (1, None, "You're not in my record!")
+			return (1, None, f"You're not in my record!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`")
 		return (1, None, f"You're {requiredName.capitalize()}")
 	
 	async def getNameFromTelegram(self):
@@ -238,6 +238,8 @@ class MessageHandler:
 		studentName = await self.getStudentName(enrolmentNumber)
 
 		if enrolmentNumber is None:
+			if studentName == 'me':
+				return (1, None, f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`")
 			return (1, None, "`Enrolment not found!`")
 
 		marksResponse = await self.getMarks(enrolmentNumber, session)
@@ -283,6 +285,8 @@ class MessageHandler:
 
 		enrolmentNumber = await self.getEnrolmentNumber(studentName)
 		if enrolmentNumber is None:
+			if studentName == 'me':
+				return (1, None, f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`")
 			return (1, None, "`Enrolment not found!`")
 
 		resultResponse = await self.getResult(enrolmentNumber)
@@ -319,7 +323,7 @@ class MessageHandler:
 			assignmentMarks = content[i+1]
 			termEndMarks = content[i+6]
 			practicalMarks = content[i+7]
-			passStatus = "☑️" if "NOT" in content[i+8] else "✅"  
+			passStatus = "☑️" if "NOT" not in content[i+8] else "✅"  
 			if assignmentMarks != "-":
 				percentageCalculations[0].append(int(assignmentMarks))
 			if termEndMarks != "-":
@@ -381,7 +385,10 @@ class MessageHandler:
 		else:
 			enrolmentNumber = await self.getEnrolmentNumber(studentName)
 			if enrolmentNumber is None:
-				response = "`Not Found!`"
+				if studentName == 'me':
+					response = f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`"
+				else:
+					response = "`Not Found!`"
 			else:
 				response = '`'+enrolmentNumber+'`'
 		return (1, None, response)
@@ -394,6 +401,8 @@ class MessageHandler:
 				return studentName
 		if studentName == 'me':
 			studentName = await self.getNameFromTelegram()
+			if studentName is None:
+				return None
 		enrolmentNumber = None
 		with open("./data/ignou/enrolments.txt", "r") as file:
 			lines = file.readlines()
@@ -411,7 +420,10 @@ class MessageHandler:
 		else:
 			enrolmentNumber = await self.getEnrolmentNumber(studentName)
 			if enrolmentNumber is None:
-				response = "`Not Found!`"
+				if studentName == 'me':
+					response = f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`"
+				else:
+					response = "`Not Found!`"
 			else:
 				studentName = await self.getStudentName(enrolmentNumber)
 				if studentName is None:
