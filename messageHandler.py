@@ -323,7 +323,7 @@ class MessageHandler:
 			assignmentMarks = content[i+1]
 			termEndMarks = content[i+6]
 			practicalMarks = content[i+7]
-			passStatus = "☑️" if "NOT" not in content[i+8] else "✅"  
+			passStatus = "☑️" if "NOT" in content[i+8] else "✅"  
 			if assignmentMarks != "-":
 				percentageCalculations[0].append(int(assignmentMarks))
 			if termEndMarks != "-":
