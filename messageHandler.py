@@ -67,7 +67,7 @@ class MessageHandler:
 			requiredResponse = await self.getExamCenterResponse(dataParts)
 			self.response.append(requiredResponse)
 		
-		elif command in ["command", "commands", "help"]
+		elif command in ["command", "commands", "help"]:
 			requiredMessage += "**Possible Commands:**\n"
 			requiredMessage += '`' + "\n".join(sorted(self.possibleCommands)) + '`'
 			return [(1, None, requiredMessage)]
