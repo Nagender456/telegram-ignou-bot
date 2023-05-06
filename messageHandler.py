@@ -13,7 +13,8 @@ class MessageHandler:
 			"enrolment", "enrol",
 			"date", "datesheet",
 			"sub", "subject",
-			"saveme", "me"]
+			"saveme", "me",
+			"commands", "command", "help"]
 
 	async def handleMessage(self, event):
 		self.message = event.message.message.lower()
@@ -31,10 +32,7 @@ class MessageHandler:
 
 		# Return if command didn"t match
 		if command is None:
-			requiredMessage = "Sorry! I did not understand!\n\n"
-			requiredMessage += "**Possible Commands:**\n"
-			requiredMessage += '`' + "\n".join(sorted(self.possibleCommands)) + '`'
-			return [(1, None, requiredMessage)]
+			return []
 		
 		self.response = []
 
@@ -68,6 +66,11 @@ class MessageHandler:
 		elif command in ["centre"]:
 			requiredResponse = await self.getExamCenterResponse(dataParts)
 			self.response.append(requiredResponse)
+		
+		elif command in ["command", "commands", "help"]
+			requiredMessage += "**Possible Commands:**\n"
+			requiredMessage += '`' + "\n".join(sorted(self.possibleCommands)) + '`'
+			return [(1, None, requiredMessage)]
 		
 		elif command in ["me"]:
 			requiredResponse = await self.getNameFromTelegramResponse()
