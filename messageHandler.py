@@ -9,6 +9,7 @@ class MessageHandler:
 			"result", "marks", "grade", "grades", "gradecard", 
 			"astatus", 
 			"name",
+			"centre",
 			"enrolment", "enrol",
 			"date", "datesheet",
 			"sub", "subject",
@@ -63,6 +64,10 @@ class MessageHandler:
 		elif command in ["saveme"]:
 			requiredResponse = await self.setNameInTelegram(dataParts)
 			self.response.append(requiredResponse)
+
+		elif command in ["centre"]:
+			requiredResponse = await self.getExamCenterResponse(dataParts)
+			self.response.append(requiredResponse)
 		
 		elif command in ["me"]:
 			requiredResponse = await self.getNameFromTelegramResponse()
@@ -74,6 +79,46 @@ class MessageHandler:
 
 
 		return self.response
+	
+	async def getExamCenterResponse(self, dataParts):
+		studentName = []
+		for dataPart in dataParts:
+			studentName.append(dataPart)
+		studentName = " ".join(studentName)
+		enrolmentNumber = await self.getEnrolmentNumber(studentName)
+		if enrolmentNumber is None:
+			return (1, None, "Enrolment not found!")
+		examCenterResponse = await self.getExamCenter(enrolmentNumber)
+		if examCenterResponse is None:
+			return (1, None, "Couldn't get exam center!")
+		examCenterResponse = self.formatExamCenterResponse(examCenterResponse)
+		return (1, None, examCenterResponse)
+
+	async def getExamCenter(self, enrolmentNumber):
+		import requests
+		from bs4 import BeautifulSoup
+		URL = f"https://admission.ignou.ac.in/changeadmdata/StatusExam.asp?submit=1&enrno={enrolmentNumber}&program=BCA"
+		urlResponse = requests.post(URL, verify=False)
+		htmlParser = BeautifulSoup(urlResponse.text, "html.parser")
+		try:
+
+			dataElements = htmlParser.find_all("tr", class_="td2")[-1].find_all('td')
+			centerCode, centerName = dataElements[1].text.split(':')
+			subjectsFilled = dataElements[2].text
+			studentName = "Unknown"
+			try:
+				studentName = await self.getStudentName(enrolmentNumber)
+			except:
+				pass
+			return studentName, centerCode, centerName, subjectsFilled
+		except Exception as e:
+			return None
+
+	def formatExamCenterResponse(self, examCenterResponse):
+		studentName, centerCode, centerName, subjectsFilled = examCenterResponse
+		subjects = "\n".join([f"{i+1}.) {subject}" for i, subject in enumerate(subjectsFilled.split())])
+		requiredResponse = f"**{studentName}**\n\nCentre chosen:\n`{centerName} ({centerCode})`\n\nSubjects:\n`{subjects}`"
+		return requiredResponse
 	
 	async def setNameInTelegram(self, dataParts):
 		try:
