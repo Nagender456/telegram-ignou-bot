@@ -15,6 +15,11 @@ class MessageHandler:
 			"sub", "subject",
 			"saveme", "me",
 			"commands", "command", "help"]
+		self.subjects_data = {
+			'50': ['FEG02', 'ECO01', 'BCSL013', 'ECO02', 'MCS013', 'MCS015', 'BCSL021', 'BCSL022', 'BCSL032', 'BCSL033', 'BCSL034', 'BCS040', 'BCS042', 'MCSL016', 'BCSL043', 'BCSL043', 'BCSL044', 'BCSL045', 'BCS053', 'BCS055', 'BCSL056', 'BCSL057', 'BCSL058', 'BCS062', 'BCSL063'],
+			'ASS_30': ['FEG02', 'ECO01', 'ECO02'],
+			'200': ['BCSP064']
+		}
 
 	async def handleMessage(self, event):
 		self.message = event.message.message.lower()
@@ -346,6 +351,51 @@ class MessageHandler:
 
 		return (1, None, resultResponse)
 	
+	def calculatePercentage(self, subjects):
+		obtainedMarks = 0
+		totalMarks = 0
+		for subject in subjects[1:]:
+			if subject[0] in self.subjects_data['200']:
+				obtainedMarks += round(int(subject[1]) * .5) + round(int(subject[3]) * 1.5)
+				totalMarks += 200
+				continue
+			assMarks = int(subject[1]) if subject[1] != '-' else 0
+			assMarks = (.25 * assMarks) if subject[0] not in self.subjects_data['ASS_30'] else (.3 * assMarks)
+			if subject[2] == '-':
+				teeMarks = int(subject[3]) if subject[3] != '-' else 0
+			else:
+				teeMarks = int(subject[2]) if subject[2] != '-' else 0
+			teeMarks = (.75 * teeMarks) if subject[0] not in self.subjects_data['ASS_30'] else (.7 * teeMarks)
+
+			if subject[0] in self.subjects_data['50']:
+				teeMarks = round(teeMarks/2)
+				assMarks = round(assMarks/2)
+				obtainedMarks += teeMarks + assMarks
+				if assMarks > 0 and teeMarks > 0:
+					totalMarks += 50
+				elif assMarks > 0:
+					multiplier = .25 if subject[0] not in self.subjects_data['ASS_30'] else .3
+					totalMarks += multiplier * 50
+				elif teeMarks > 0:
+					multiplier = .75 if subject[0] not in self.subjects_data['ASS_30'] else .7
+					totalMarks += multiplier * 50
+			else:
+				teeMarks = round(teeMarks)
+				assMarks = round(assMarks)
+				obtainedMarks += assMarks + teeMarks
+				if assMarks > 0 and teeMarks > 0:
+					totalMarks += 100
+				elif assMarks > 0:
+					multiplier = .25 if subject[0] not in self.subjects_data['ASS_30'] else .3
+					totalMarks += multiplier * 100
+				elif teeMarks > 0:
+					multiplier = .75 if subject[0] not in self.subjects_data['ASS_30'] else .7
+					totalMarks += multiplier * 100
+		print(obtainedMarks)
+		print(totalMarks)
+		percentage = (obtainedMarks / totalMarks) * 100
+		return round(percentage, 2)
+	
 	async def getResult(self, enrolmentNumber, program = "BCA", typeProgram = 1):
 		import requests
 		from bs4 import BeautifulSoup
@@ -368,7 +418,7 @@ class MessageHandler:
 		percentageCalculations = [[], []]
 		for i in range(9, len(content)-9, 9):
 			subjectName = content[i]
-			assignmentMarks = content[i+1]
+			assignmentMarks = content[i+1] if subjectName not in self.subjects_data['200'] else content[i+2]
 			termEndMarks = content[i+6]
 			practicalMarks = content[i+7]
 			passStatus = "☑️" if "NOT" in content[i+8] else "✅"  
@@ -380,10 +430,13 @@ class MessageHandler:
 				percentageCalculations[1].append(int(practicalMarks))
 
 			requiredData.append((subjectName, assignmentMarks, termEndMarks, practicalMarks, passStatus))
-		requiredData.append("Percentage: {0:.2f}".format(
-			( ( sum(percentageCalculations[0]) / len(percentageCalculations[0]) ) * .25 +
-    		  ( sum(percentageCalculations[1]) / len(percentageCalculations[1]) ) * .75 )
-		))
+
+		percentage = self.calculatePercentage(requiredData)
+		requiredData.append(f"Percentage: {percentage}")
+		# requiredData.append("Percentage: {0:.2f}".format(
+		# 	( ( sum(percentageCalculations[0]) / len(percentageCalculations[0]) ) * .25 +
+    	# 	  ( sum(percentageCalculations[1]) / len(percentageCalculations[1]) ) * .75 )
+		# ))
 		return requiredData
 		return "lol"
 
@@ -443,7 +496,7 @@ class MessageHandler:
 
 	async def getEnrolmentNumber(self, studentName):
 		if studentName.isdigit():
-			if len(studentName) != 10:
+			if len(studentName) < 9 or len(studentName) > 10:
 				return None
 			else:
 				return studentName
