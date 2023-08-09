@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore")
 
 class MessageHandler:
 	def __init__(self):
-		self.botName = "titu"
+		self.botNames = ["ritu", "yati", "titu"]
 		self.response = []
 		self.possibleCommands = [
 			"result", "marks", "grade", "grades", "gradecard", 
@@ -178,7 +178,7 @@ class MessageHandler:
 	async def getNameFromTelegramResponse(self):
 		requiredName = await self.getNameFromTelegram()
 		if requiredName is None:
-			return (1, None, f"You're not in my record!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`")
+			return (1, None, f"You're not in my record!\n\nTry saving your name using following syntax:\n{self.botNames[0]} saveme `Your Name`")
 		return (1, None, f"You're {requiredName.capitalize()}")
 	
 	async def getNameFromTelegram(self):
@@ -317,7 +317,7 @@ class MessageHandler:
 
 		if enrolmentNumber is None:
 			if studentName == 'me':
-				return (1, None, f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`")
+				return (1, None, f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botNames[0]} saveme `Your Name`")
 			return (1, None, "`Enrolment not found!`")
 
 		marksResponse = await self.getMarks(enrolmentNumber, session)
@@ -364,7 +364,7 @@ class MessageHandler:
 		enrolmentNumber = await self.getEnrolmentNumber(studentName)
 		if enrolmentNumber is None:
 			if studentName == 'me':
-				return (1, None, f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`")
+				return (1, None, f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botNames[0]} saveme `Your Name`")
 			return (1, None, "`Enrolment not found!`")
 
 		resultResponse = await self.getResult(enrolmentNumber)
@@ -588,7 +588,7 @@ class MessageHandler:
 			enrolmentNumber = await self.getEnrolmentNumber(studentName)
 			if enrolmentNumber is None:
 				if studentName == 'me':
-					response = f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`"
+					response = f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botNames[0]} saveme `Your Name`"
 				else:
 					response = "`Not Found!`"
 			else:
@@ -623,7 +623,7 @@ class MessageHandler:
 			enrolmentNumber = await self.getEnrolmentNumber(studentName)
 			if enrolmentNumber is None:
 				if studentName == 'me':
-					response = f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botName} saveme `Your Name`"
+					response = f"Couldn't get enrolment!\n\nTry saving your name using following syntax:\n{self.botNames[0]} saveme `Your Name`"
 				else:
 					response = "`Not Found!`"
 			else:
@@ -680,7 +680,7 @@ class MessageHandler:
 		skipBotname = False
 		for part in messageParts:
 			curPart = part.strip()
-			if curPart == self.botName and not skipBotname: 
+			if curPart in self.botNames and not skipBotname: 
 				skipBotname = True
 				continue
 			if curPart in self.possibleCommands:
@@ -691,7 +691,8 @@ class MessageHandler:
 		return command, dataParts
 
 	async def isMentioned(self):
-		if self.botName in self.message.split(): return True
+		for botName in self.botNames:
+			if botName in self.message.split(): return True
 		return False
 	
 	#####################################
