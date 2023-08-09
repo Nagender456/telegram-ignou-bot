@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore")
 
 class MessageHandler:
 	def __init__(self):
-		self.botName = "ritu"
+		self.botName = "titu"
 		self.response = []
 		self.possibleCommands = [
 			"result", "marks", "grade", "grades", "gradecard", 
@@ -15,10 +15,20 @@ class MessageHandler:
 			"sub", "subject",
 			"saveme", "me",
 			"commands", "command", "help"]
+		
 		self.subjects_data = {
 			'50': ['FEG02', 'ECO01', 'BCSL013', 'ECO02', 'MCS013', 'MCS015', 'BCSL021', 'BCSL022', 'BCSL032', 'BCSL033', 'BCSL034', 'BCS040', 'BCS042', 'MCSL016', 'BCSL043', 'BCSL043', 'BCSL044', 'BCSL045', 'BCS053', 'BCS055', 'BCSL056', 'BCSL057', 'BCSL058', 'BCS062', 'BCSL063'],
 			'ASS_30': ['FEG02', 'ECO01', 'ECO02'],
 			'200': ['BCSP064']
+		}
+
+		self.semester_subjects = {
+			1: ['FEG02', 'ECO01', 'BCS011', 'BCS012', 'BCSL013'],
+			2: ["ECO02", "MCS011", "MCS012", "MCS015", "MCS013", "BCSL021", "BCSL022"],
+			3: ["MCS021", "MCS023", "MCS014", "BCS031", "BCSL032", "BCSL033", "BCSL034"],
+			4: ["BCS040", "MCS024", "BCS041", "BCS042", "MCSL016", "BCSL043", "BCSL044", "BCSL045"],
+			5: ["BCS051", "BCS052", "BCS053", "BCS054", "BCS055", "BCSL056", "BCSL057", "BCSL058"],
+			6: ["BCS062", "MCS022", "BCSL063", "BCSP064"]
 		}
 
 	async def handleMessage(self, event):
@@ -73,10 +83,14 @@ class MessageHandler:
 			self.response.append(requiredResponse)
 		
 		elif command in ["command", "commands", "help"]:
-			requiredMessage += "**Possible Commands:**\n"
+			requiredMessage = "**Possible Commands:**\n"
 			requiredMessage += '`' + "\n".join(sorted(self.possibleCommands)) + '`'
 			return [(1, None, requiredMessage)]
 		
+		elif command in ["graph"]:
+			requiredResponse = await self.getGraphResponse(dataParts)
+			self.response.append(requiredResponse)
+
 		elif command in ["me"]:
 			requiredResponse = await self.getNameFromTelegramResponse()
 			self.response.append(requiredResponse)
@@ -88,6 +102,17 @@ class MessageHandler:
 
 		return self.response
 	
+	async def getGraphResponse(self, dataParts):
+		studentName = []
+		for dataPart in dataParts:
+			studentName.append(dataPart)
+		studentName = " ".join(studentName)
+		enrolmentNumber = await self.getEnrolmentNumber(studentName)
+		if enrolmentNumber is None:
+			return (1, None, "Enrolment not found!")
+		studentResult = self.getResult(enrolmentNumber)
+
+
 	async def getExamCenterResponse(self, dataParts):
 		studentName = []
 		for dataPart in dataParts:
@@ -391,8 +416,6 @@ class MessageHandler:
 				elif teeMarks > 0:
 					multiplier = .75 if subject[0] not in self.subjects_data['ASS_30'] else .7
 					totalMarks += multiplier * 100
-		print(obtainedMarks)
-		print(totalMarks)
 		percentage = (obtainedMarks / totalMarks) * 100
 		return round(percentage, 2)
 	
@@ -432,7 +455,7 @@ class MessageHandler:
 			requiredData.append((subjectName, assignmentMarks, termEndMarks, practicalMarks, passStatus))
 
 		percentage = self.calculatePercentage(requiredData)
-		requiredData.append(f"Percentage: {percentage}")
+		requiredData.append(f"{percentage}")
 		# requiredData.append("Percentage: {0:.2f}".format(
 		# 	( ( sum(percentageCalculations[0]) / len(percentageCalculations[0]) ) * .25 +
     	# 	  ( sum(percentageCalculations[1]) / len(percentageCalculations[1]) ) * .75 )
@@ -463,19 +486,97 @@ class MessageHandler:
 		data.append("`Percentage: {0:.2f}`".format(percentage))
 		return "\n".join(data)
 	
+	def getObtainedMarks(self, subjectName, assMarks, teeMarks):
+		if subjectName in self.subjects_data['200']:
+			obtainedMarks = round(assMarks * .5) + round(teeMarks * 1.5)
+			# obtainedMarks = "{:.1f}".format(obtainedMarks)
+			maxMarks = 200
+			return obtainedMarks, maxMarks
+		assMarks = (.25 * assMarks) if subjectName not in self.subjects_data['ASS_30'] else (.3 * assMarks)
+		teeMarks = (.75 * teeMarks) if subjectName not in self.subjects_data['ASS_30'] else (.7 * teeMarks)
+
+		if subjectName in self.subjects_data['50']:
+			teeMarks /= 2
+			assMarks /= 2
+			obtainedMarks = round(teeMarks) + round(assMarks)
+			maxMarks = 50
+			# obtainedMarks = "{:.1f}".format(obtainedMarks)
+			return obtainedMarks, maxMarks
+			# if assMarks > 0 and teeMarks > 0:
+			# 	totalMarks += 50
+			# elif assMarks > 0:
+			# 	multiplier = .25 if subjectName not in self.subjects_data['ASS_30'] else .3
+			# 	totalMarks += multiplier * 50
+			# elif teeMarks > 0:
+			# 	multiplier = .75 if subjectName not in self.subjects_data['ASS_30'] else .7
+			# 	totalMarks += multiplier * 50
+		else:
+			obtainedMarks = round(assMarks) + round(teeMarks)
+			maxMarks = 100
+			# obtainedMarks = "{:.1f}".format(obtainedMarks)
+			return obtainedMarks, maxMarks
+			# if assMarks > 0 and teeMarks > 0:
+			# 	totalMarks += 100
+			# elif assMarks > 0:
+			# 	multiplier = .25 if subjectName not in self.subjects_data['ASS_30'] else .3
+			# 	totalMarks += multiplier * 100
+			# elif teeMarks > 0:
+			# 	multiplier = .75 if subjectName not in self.subjects_data['ASS_30'] else .7
+			# 	totalMarks += multiplier * 100
+
 	def formatResultResponse(self, resultResponse):
 		studentName = resultResponse[0]
 		percentage = resultResponse[-1]
-		requiredResponse = f"Sub       A   T   P   \n"
+		# requiredResponse = f"`Sub     A   T   P   `\n\n"
+		requiredResponse = f"`Sub      A   T   Overall`\n"
+		semSubjects = {1: [], 2: [], 3: [], 4: [], 5: [], 6: []}
 		for subject in resultResponse[1:][:-1]:
-			cur = self.fillString(subject[0], " ", 10, 1)
-			cur += self.fillString(subject[1], " ", 4, 1)
-			cur += self.fillString(subject[2], " ", 4, 1)
-			cur += self.fillString(subject[3], " ", 4, 1)
-			cur += subject[4]
-			cur += "\n"
-			requiredResponse += cur
-		requiredResponse = "**" + studentName + "**\n\n" + "`" + requiredResponse + "\n" + percentage + "`"
+			for key, val in self.semester_subjects.items():
+				if subject[0] in val:
+					semSubjects[key].append(subject)
+		totalObtainedMarks = 0
+		totalMaxMarks = 0
+		for key, val in semSubjects.items():
+			if len(val) < 1: continue
+			temp = self.fillString(f"Semester {key}", " ", 25, 0)
+			cur = '\n`' + " " * 6 + '`' + '**' + temp + '**' + '\n'
+			totalObtainedSemesterMarks = 0
+			totalMaxSemesterMarks = 0
+			for subject in val:
+				subjectNameString = subject[0]
+				assMarksString = subject[1]
+				teeMarksString = subject[2] if subject[2] != '-' else subject[3]
+
+				assMarks = int(assMarksString) if assMarksString != '-' else 0
+				teeMarks = int(teeMarksString) if teeMarksString != '-' else 0
+				obtainedMarks, maxMarks = self.getObtainedMarks(subjectNameString, assMarks, teeMarks)
+				totalObtainedMarks += obtainedMarks
+				totalObtainedSemesterMarks += obtainedMarks
+				totalMaxMarks += maxMarks
+				totalMaxSemesterMarks += maxMarks
+
+				subjectNameString = self.fillString(subjectNameString, " ", 9, 1)
+				assMarksString = self.fillString(assMarksString, " ", 4, 1)
+				teeMarksString = self.fillString(teeMarksString, " ", 4, 1)
+				finalMarksString = self.fillString(f"{obtainedMarks}", " ", 3, -1) + '/' + self.fillString(f"{maxMarks}", " ", 4, 1)
+				statusString = subject[4]
+				# obtainedMarksString = self.fillString(str(obtainedMarks), " ", 6, 1)
+				# maxMarksString = self.fillString(str(maxMarks), " ", 6, 1)
+				
+				cur += f"`{subjectNameString}{assMarksString}{teeMarksString}{finalMarksString}{statusString}`\n"
+				# cur += '`' + self.fillString(subject[0], " ", 8, 1)
+				# cur += self.fillString(subject[1], " ", 4, 1)
+				# cur += self.fillString(subject[2], " ", 4, 1) if subject[2] != '-' else self.fillString(subject[3], " ", 4, 1)
+				# cur += self.fillString(subject[3], " ", 4, 1)
+				# cur += subject[4] + '`'
+				# cur += "\n"
+			percentageSemester = "{:.2f}".format(((totalObtainedSemesterMarks/totalMaxSemesterMarks)*100))
+			requiredResponse += cur + '`' + self.fillString(f"{percentageSemester}% - {totalObtainedSemesterMarks}/{totalMaxSemesterMarks}", " ", 24, -1) + '`' + '\n'
+		totalMarks = "**Final**: __{}/{} ({}%)__".format(round(totalObtainedMarks), totalMaxMarks, percentage)
+		# percentage = (totalObtainedMarks / totalMaxMarks) * 100
+		# percentage = "{:.2f}".format(percentage)
+		# totalMarks = f"{totalObtainedMarks} out of {totalMaxMarks}"
+		requiredResponse = "**" + studentName + "**\n\n" + requiredResponse + '\n' + totalMarks# + '\n' + '**' + percentage + '**'
 		return requiredResponse.strip()
 
 	async def getEnrolmentResponse(self, dataParts):
@@ -560,6 +661,7 @@ class MessageHandler:
 		return False
 
 	def fillString(self, string, symbol, length, direction):
+		string = string.strip()
 		lengthDiff = length - len(string)
 		if lengthDiff < 0:
 			print("Length Overflow!")
@@ -568,6 +670,8 @@ class MessageHandler:
 				string += symbol * lengthDiff
 			elif direction < 0:
 				string = symbol * lengthDiff + string
+			else:
+				string = symbol * (lengthDiff//2) + string + symbol * (lengthDiff//2)
 		return string
 
 	def getCommand(self, messageParts):
