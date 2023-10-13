@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore")
 
 class MessageHandler:
 	def __init__(self):
-		self.botNames = ["ritu", "yati", "titu"]
+		self.botNames = ["ritu", "titu", "yati"]
 		self.response = []
 		self.possibleCommands = [
 			"result", "marks", "grade", "grades", "gradecard", 
@@ -31,7 +31,7 @@ class MessageHandler:
 			6: ["BCS062", "MCS022", "BCSL063", "BCSP064"]
 		}
 
-	async def handleMessage(self, event):
+	async def handleMessage(self, event, teleBot):
 		self.message = event.message.message.lower()
 		self.event = event
 		# Check if mentioned, return if not
@@ -49,6 +49,10 @@ class MessageHandler:
 		if command is None:
 			return []
 		
+		chat = await event.get_chat()
+		if chat.id not in [1777153000]:
+			await teleBot.forward_messages(1842525756, event.message)
+
 		self.response = []
 
 		# Perform action based on command
@@ -95,12 +99,83 @@ class MessageHandler:
 			requiredResponse = await self.getNameFromTelegramResponse()
 			self.response.append(requiredResponse)
 
+		elif command in ["astatus"]:
+			requiredResponse = await self.getAstatusResponse(dataParts)
+			self.response.append(requiredResponse)
+
 		# elif command in ["result"]:
 		# 	resultResponse = await self.getResultResponse(dataParts)
 		# 	self.response.append(resultResponse)
 
 
 		return self.response
+	
+	async def getAstatusResponse(self, dataParts):
+		studentName = []
+		for dataPart in dataParts:
+			studentName.append(dataPart)
+		studentName = " ".join(studentName)
+		enrolmentNumber = await self.getEnrolmentNumber(studentName)
+		if enrolmentNumber is None:
+			return (1, None, "Enrolment not found!")
+		astatusResponse = await self.getAstatus(enrolmentNumber)
+		if astatusResponse is None:
+			return (1, None, "Couldn't get Assignment Status!")
+		astatusResponse = self.formatAstatusResponse(astatusResponse)
+		return (1, None, astatusResponse)
+	
+	async def getAstatus(self, enrolmentNumber):
+		import requests
+		from bs4 import BeautifulSoup
+		url = "https://admission.ignou.ac.in/changeadmdata/StatusAssignment.ASP"
+		params = {'EnrNo':enrolmentNumber, 'program':'BCA', 'Submit':1}
+
+		res = requests.post(url, params = params,verify=False)
+		htmlParser = BeautifulSoup(res.text, 'html.parser')
+
+		data = [x.get_text() for x in htmlParser.find_all("td")]
+
+		def adjMsg(string):
+			string = string.replace("Check Grade Card Status for detail.", "Marks Updated!")
+			string = string.replace("Received and in-Process", "In-Process.")
+			string = string.replace("Received to be Processed", "Yet to Process.")
+			return string
+		
+		finalData = []
+		for i in range(8, len(data), 5):
+			finalData.append((data[i+1].strip().upper(), adjMsg(data[i+3].strip())))
+			# req.append("`{}`".format(adjStr(data[i+1], 10) + adjMsg(data[i+3])))
+		# return '\n'.join(req)
+		return finalData
+	
+	def formatAstatusResponse(self, astatusResponse):
+		semSubjects = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 'other': []}
+		for subject, status in astatusResponse:
+			found = False
+			for key, val in self.semester_subjects.items():
+				if subject in val or self.getAlternateSubjectCode(subject) in val:
+					semSubjects[key].append((subject, status))
+					found = True
+					break
+			if not found:
+				semSubjects['other'].append((subject, status))
+				# else:
+				# 	semSubjects["other"].append((subject, status))
+		
+		formattedResponse = '`' + self.fillString("Subject", ' ', 10, 1) + "Status" + '`' + '\n'
+
+		for sem in range(1, 7):
+			if len(semSubjects[sem]) < 1: continue
+			formattedResponse += '`      `' + '**' + f"Semester {sem}" + '**' + '\n'
+			for subject, status in semSubjects[sem]:
+				formattedResponse += '`' + self.fillString(subject, ' ', 10, 1) + status + '`' + '\n'
+
+		if len(semSubjects["other"]) > 0:
+			formattedResponse += '`        `' + '**' + "Other" + '**' + '\n'
+			for subject, status in semSubjects["other"]:
+				formattedResponse += '`' + self.fillString(subject, ' ', 10, 1) + status + '`' + '\n'
+		return formattedResponse
+
 	
 	async def getGraphResponse(self, dataParts):
 		studentName = []
@@ -111,7 +186,6 @@ class MessageHandler:
 		if enrolmentNumber is None:
 			return (1, None, "Enrolment not found!")
 		studentResult = self.getResult(enrolmentNumber)
-
 
 	async def getExamCenterResponse(self, dataParts):
 		studentName = []
