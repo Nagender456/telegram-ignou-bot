@@ -8,6 +8,7 @@ def main():
     from messageHandler import MessageHandler
     from telethon import TelegramClient, events
     import os
+    print("Ritu Telegram Bot!")
     messageHandler = MessageHandler()
     teleBot = TelegramClient('bot', os.getenv('TELEGRAM_API_ID'), os.getenv(
         'TELEGRAM_API_HASH'), request_retries=100, connection_retries=100, retry_delay=5).start(bot_token=os.getenv('TELEGRAM_BOT_TOKEN'))
@@ -23,6 +24,9 @@ def main():
                 await event.respond(response[2])
             elif response[0] == 1:
                 await event.reply(response[2])
+            elif response[0] == 3:
+                await event.reply(file=response[1])
+                os.remove(path=response[1])
     teleBot.start()
     teleBot.run_until_disconnected()
 

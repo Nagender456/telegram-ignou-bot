@@ -1,26 +1,40 @@
 import warnings
+import requests
+from bs4 import BeautifulSoup
+import matplotlib.pyplot as plt
+import numpy as np
 warnings.filterwarnings("ignore")
 
 class MessageHandler:
 	def __init__(self):
-		self.botNames = ["ritu", "titu", "yati"]
+		self.botNames = ["ritu", "titu"]
 		self.response = []
 		self.possibleCommands = [
 			"result", "marks", "grade", "grades", "gradecard", 
 			"astatus", 
+			"status",
 			"name",
 			"centre",
 			"enrolment", "enrol",
 			"date", "datesheet",
 			"sub", "subject",
 			"saveme", "me",
-			"commands", "command", "help"]
+			"commands", "command", "help",
+			"percent", "percentage", "%",
+			"rank", "ranks", "leaderboard",
+			"updateranks",
+			"publicranks",
+			"graph",
+		]
+		#"updatepublic"
 		
 		self.subjects_data = {
 			'50': ['FEG02', 'ECO01', 'BCSL013', 'ECO02', 'MCS013', 'MCS015', 'BCSL021', 'BCSL022', 'BCSL032', 'BCSL033', 'BCSL034', 'BCS040', 'BCS042', 'MCSL016', 'BCSL043', 'BCSL043', 'BCSL044', 'BCSL045', 'BCS053', 'BCS055', 'BCSL056', 'BCSL057', 'BCSL058', 'BCS062', 'BCSL063'],
 			'ASS_30': ['FEG02', 'ECO01', 'ECO02'],
 			'200': ['BCSP064']
 		}
+
+		self.passing_marks_35_subjects = ['FEG02', 'ECO01', 'ECO02', 'BCS040']
 
 		self.semester_subjects = {
 			1: ['FEG02', 'ECO01', 'BCS011', 'BCS012', 'BCSL013'],
@@ -35,10 +49,15 @@ class MessageHandler:
 		self.message = event.message.message.lower()
 		self.event = event
 		# Check if mentioned, return if not
-		mentioned = await self.isMentioned() or event.mentioned
-		if not mentioned: 
+		mentioned = await self.isMentioned()
+		reply_mentioned = event.mentioned
+		if not (mentioned or reply_mentioned): 
 			return []
 		
+		chat = await event.get_chat()
+		if chat.id not in [1777153000]:
+			await teleBot.forward_messages(-1001842525756, event.message)
+
 		# Parse Message
 		messageParts = self.message.split()
 
@@ -47,11 +66,9 @@ class MessageHandler:
 
 		# Return if command didn"t match
 		if command is None:
+			if mentioned:
+				return [(1, None, "Use `ritu help` for help!")]
 			return []
-		
-		chat = await event.get_chat()
-		if chat.id not in [1777153000]:
-			await teleBot.forward_messages(1842525756, event.message)
 
 		self.response = []
 
@@ -60,6 +77,10 @@ class MessageHandler:
 			requiredResponse = await self.getMarksResponse(dataParts)
 			if requiredResponse[-1] is None:
 				requiredResponse = await self.getResultResponse(dataParts)
+			self.response.append(requiredResponse)
+
+		elif command in ["status"]:
+			requiredResponse = await self.getStatusResponse(dataParts)
 			self.response.append(requiredResponse)
 		
 		elif command in ["name"]:
@@ -87,9 +108,9 @@ class MessageHandler:
 			self.response.append(requiredResponse)
 		
 		elif command in ["command", "commands", "help"]:
-			requiredMessage = "**Possible Commands:**\n"
-			requiredMessage += '`' + "\n".join(sorted(self.possibleCommands)) + '`'
-			return [(1, None, requiredMessage)]
+			with open('./data/templates/commands.txt') as file:
+				requiredResponse = file.read()
+			return [(1, None, requiredResponse)]
 		
 		elif command in ["graph"]:
 			requiredResponse = await self.getGraphResponse(dataParts)
@@ -102,6 +123,26 @@ class MessageHandler:
 		elif command in ["astatus"]:
 			requiredResponse = await self.getAstatusResponse(dataParts)
 			self.response.append(requiredResponse)
+		
+		elif command in ["percent", "percentage", "%"]:
+			requiredResponse = await self.getPercentageResponse(dataParts)
+			self.response.append(requiredResponse)
+		
+		elif command in ["leaderboard", "ranks", "rank"]:
+			requiredResponse = self.getPrivateLeaderBoardResponse()
+			self.response.append(requiredResponse)
+		
+		elif command in ["publicranks"]:
+			requiredResponse = self.getPublicLeaderBoardResponse()
+			self.response.append(requiredResponse)
+		
+		elif command in ["updateranks"]:
+			requiredResponse = await self.updatePrivateLeaderBoard()
+			self.response.append(requiredResponse)
+		
+		elif command in ["updatepublic"]:
+			requiredResponse = await self.updatePublicLeaderBoard()
+			self.response.append(requiredResponse)
 
 		# elif command in ["result"]:
 		# 	resultResponse = await self.getResultResponse(dataParts)
@@ -109,6 +150,125 @@ class MessageHandler:
 
 
 		return self.response
+	
+	async def getStatusResponse(self, dataParts):
+		studentName = []
+		for dataPart in dataParts:
+			studentName.append(dataPart)
+		studentName = " ".join(studentName)
+		enrolmentNumber = await self.getEnrolmentNumber(studentName)
+		if enrolmentNumber is None:
+			return (1, None, "Enrolment not found!")
+		studentName, resultData, finalPercentage = await self.getResult(enrolmentNumber)
+
+		statusData = {
+			'backlogTermEnd': [],
+			'backlogAssignments': [],
+			'remainingTermEnd': [],
+			'remainingAssignments': []
+		}
+		
+		for sem in range(1, 7):
+			for subject, subjectMarks in resultData[sem].items():
+				if subject in self.passing_marks_35_subjects:
+					if subjectMarks[0] <= 0:
+						statusData['remainingAssignments'].append((sem, subject))
+					elif subjectMarks[0] < 35:
+						statusData['backlogAssignments'].append((sem, subject))
+					if subjectMarks[1] <= 0:
+						statusData['remainingTermEnd'].append((sem, subject))
+					elif subjectMarks[1] < 35:
+						statusData['backlogTermEnd'].append((sem, subject))
+				else:
+					if subjectMarks[0] <= 0:
+						statusData['remainingAssignments'].append((sem, subject))
+					elif subjectMarks[0] < 40:
+						statusData['backlogAssignments'].append((sem, subject))
+					if subjectMarks[1] <= 0:
+						statusData['remainingTermEnd'].append((sem, subject))
+					elif subjectMarks[1] < 40:
+						statusData['backlogTermEnd'].append((sem, subject))
+			for subject in self.semester_subjects[sem]:
+				if subject not in resultData[sem]:
+					statusData['remainingTermEnd'].append((sem, subject))
+					if subject != 'BCSP064':
+						statusData['remainingAssignments'].append((sem, subject))
+		
+		requiredResponse = self.formatStatusResponse(studentName, statusData, finalPercentage)
+		return (1, None, requiredResponse)
+	
+	def formatStatusResponse(self, studentName, statusData, finalPercentage):
+		teeBacklogs = statusData['backlogTermEnd']
+		assBacklogs = statusData['backlogAssignments']
+		teeRem = statusData['remainingTermEnd']
+		assRem = statusData['remainingAssignments']
+
+		requiredResponse = f"**{studentName}**\n\n"
+
+		if len(teeBacklogs) + len(assBacklogs) + len(teeRem) + len(assRem) <= 0:
+			requiredResponse += f"**Completed with {finalPercentage}%!**"
+
+		if len(teeBacklogs) > 0:
+			requiredResponse += f"**TEE Backlogs ({len(teeBacklogs)}):**\n"
+			for sem, subject in teeBacklogs:
+				requiredResponse += f"` {sem} - {subject}`\n"
+			requiredResponse += '\n'
+		
+		if len(assBacklogs) > 0:
+			requiredResponse += f"**ASS Backlogs ({len(assBacklogs)}):**\n"
+			for sem, subject in assBacklogs:
+				requiredResponse += f"` {sem} - {subject}`\n"
+			requiredResponse += '\n'
+
+		if len(teeRem) > 0:
+			requiredResponse += f"**TEE Remaining ({len(teeRem)}):**\n"
+			for sem, subject in teeRem:
+				requiredResponse += f"` {sem} - {subject}`\n"
+			requiredResponse += '\n'
+		
+		if len(assRem) > 0:
+			requiredResponse += f"**ASS Remaining ({len(assRem)}):**\n"
+			for sem, subject in assRem:
+				requiredResponse += f"` {sem} - {subject}`\n"
+			requiredResponse += '\n'
+				
+		return requiredResponse
+
+	async def getPercentageResponse(self, dataParts):
+		studentName = []
+		for dataPart in dataParts:
+			studentName.append(dataPart)
+		studentName = " ".join(studentName)
+		enrolmentNumber = await self.getEnrolmentNumber(studentName)
+		if enrolmentNumber is None:
+			return (1, None, "Enrolment not found!")
+		percentage = await self.getPercentage(enrolmentNumber)
+		if percentage is not None:
+			percentageResponse = f"`{percentage}%`"
+		else:
+			percentageResponse = f"`Couldn't get percentage!\nPlease check input and try again!`"
+		return (1, None, percentageResponse)
+	
+	async def getPercentage(self, enrolmentNumber, validation=False):
+		try:
+			resultResponse = await self.getResult(enrolmentNumber)
+			if validation:
+				totalTeeMarks = 0
+				totalAssMarks = 0
+				for subject in resultResponse[1:][:-1]:
+					# subjectNameString = subject[0]
+					assMarksString = subject[1]
+					teeMarksString = subject[2] if subject[2] != '-' else subject[3]
+					assMarks = int(assMarksString) if assMarksString != '-' else 0
+					teeMarks = int(teeMarksString) if teeMarksString != '-' else 0
+					totalTeeMarks += teeMarks
+					totalAssMarks += assMarks
+				if totalTeeMarks < 200:
+					return None
+			percentage = float(resultResponse[-1])
+		except Exception as e:
+			percentage = None
+		return percentage 
 	
 	async def getAstatusResponse(self, dataParts):
 		studentName = []
@@ -125,9 +285,8 @@ class MessageHandler:
 		return (1, None, astatusResponse)
 	
 	async def getAstatus(self, enrolmentNumber):
-		import requests
-		from bs4 import BeautifulSoup
-		url = "https://admission.ignou.ac.in/changeadmdata/StatusAssignment.ASP"
+		# url = "https://admission.ignou.ac.in/changeadmdata/StatusAssignment.ASP"
+		url = "https://isms.ignou.ac.in/changeadmdata/StatusAssignment.ASP"
 		params = {'EnrNo':enrolmentNumber, 'program':'BCA', 'Submit':1}
 
 		res = requests.post(url, params = params,verify=False)
@@ -178,6 +337,7 @@ class MessageHandler:
 
 	
 	async def getGraphResponse(self, dataParts):
+		import random
 		studentName = []
 		for dataPart in dataParts:
 			studentName.append(dataPart)
@@ -185,7 +345,10 @@ class MessageHandler:
 		enrolmentNumber = await self.getEnrolmentNumber(studentName)
 		if enrolmentNumber is None:
 			return (1, None, "Enrolment not found!")
-		studentResult = self.getResult(enrolmentNumber)
+		_, completeSemData, _ = await self.getResult(enrolmentNumber)
+		fileName = str(random.randint(1, 10000)) + '.png'
+		self.plot_semester_data(completeSemData, fileName)
+		return (3, fileName, None)
 
 	async def getExamCenterResponse(self, dataParts):
 		studentName = []
@@ -202,9 +365,9 @@ class MessageHandler:
 		return (1, None, examCenterResponse)
 
 	async def getExamCenter(self, enrolmentNumber):
-		import requests
-		from bs4 import BeautifulSoup
-		URL = f"https://admission.ignou.ac.in/changeadmdata/StatusExam.asp?submit=1&enrno={enrolmentNumber}&program=BCA"
+		# https://hall_ticket.ignou.ac.in/hall0624/ignouhallticketjun2024.aspx
+		URL = f"https://hall_ticket.ignou.ac.in/hall0624/ignouhallticketjun2024.aspx?submit=1&enrno={enrolmentNumber}&program=BCA"
+		# URL = f"https://admission.ignou.ac.in/changeadmdata/StatusExam.asp?submit=1&enrno={enrolmentNumber}&program=BCA"
 		urlResponse = requests.post(URL, verify=False)
 		htmlParser = BeautifulSoup(urlResponse.text, "html.parser")
 		try:
@@ -403,9 +566,6 @@ class MessageHandler:
 		return (1, None, marksResponse)
 
 	async def getMarks(self, enrolmentNumber, session):
-		import requests
-		from bs4 import BeautifulSoup
-
 		url = "https://termendresult.ignou.ac.in/TermEnd{}/TermEnd{}.asp".format(session.capitalize(), session.capitalize())
 		params = {"eno":enrolmentNumber, "myhide":"OK"}
 
@@ -494,24 +654,21 @@ class MessageHandler:
 		return round(percentage, 2)
 	
 	async def getResult(self, enrolmentNumber, program = "BCA", typeProgram = 1):
-		import requests
-		from bs4 import BeautifulSoup
-
 		url = "https://gradecard.ignou.ac.in/gradecard/view_gradecard.aspx"
 		params = {"eno":enrolmentNumber, "prog":program, "type": typeProgram}
 
 		urlResponse = requests.post(url, params = params, verify=False)
 		htmlParser = BeautifulSoup(urlResponse.text, "html.parser")
 
-		name = htmlParser.find(id="ctl00_ContentPlaceHolder1_lblDispname").get_text()
-		if len(name)==0:
+		studentName = htmlParser.find(id="ctl00_ContentPlaceHolder1_lblDispname").get_text()
+		if len(studentName)==0:
 			return []
 
 		tables = htmlParser.find_all("table")
 		dataTable = tables[-2]
 		content = dataTable.find_all("font")
 		content = [x.get_text() for x in content]
-		requiredData = [name]
+		requiredData = []
 		percentageCalculations = [[], []]
 		for i in range(9, len(content)-9, 9):
 			subjectName = content[i]
@@ -529,36 +686,26 @@ class MessageHandler:
 			requiredData.append((subjectName, assignmentMarks, termEndMarks, practicalMarks, passStatus))
 
 		percentage = self.calculatePercentage(requiredData)
-		requiredData.append(f"{percentage}")
-		# requiredData.append("Percentage: {0:.2f}".format(
-		# 	( ( sum(percentageCalculations[0]) / len(percentageCalculations[0]) ) * .25 +
-    	# 	  ( sum(percentageCalculations[1]) / len(percentageCalculations[1]) ) * .75 )
-		# ))
-		return requiredData
-		return "lol"
 
-		data = ["`"+" ".join([x.capitalize() for x in name.split()])+"`", "", "`Sub         A    T    P`"]
-		assignmentMarks = []
-		teeMarks = []
-		for i in range(9, len(content)-9, 9):
-			data.append("`"+adjStr(content[i], dataAd[0]) + adjStr(content[i+1], dataAd[1]) + adjStr(content[i+6], dataAd[2]) + adjStr(content[i+7], dataAd[3])+"`")
-			if not content[i+1]=="-":
-				assignmentMarks.append(int(content[i+1]))
-			if content[i+7]!="-":
-				teeMarks.append(int(content[i+7]))
-			elif content[i+6]!="-":
-				teeMarks.append(int(content[i+6]))
-			data[-1] += "☑️" if "NOT" in content[i+8] else "✅"
-		if not len(teeMarks):
-			percentage = "Not much data"#sum(assignmentMarks)/len(assignmentMarks)
-		else:
-			try:
-				percentage = .25 ** (sum(assignmentMarks)/len(assignmentMarks)) + .75 ** (sum(teeMarks)/len(teeMarks))
-			except:
-				percentage = "Not much data"
-		data.append("")
-		data.append("`Percentage: {0:.2f}`".format(percentage))
-		return "\n".join(data)
+		completeSemData = {1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}}
+		for subject in requiredData:
+			for key, val in self.semester_subjects.items():
+				if subject[0] in val:
+					completeSemData[key][subject[0]] = subject
+		for semester, semSubjects in completeSemData.items():
+			if len(semSubjects) < 1: continue
+			for subjectName, subjectData in semSubjects.items():
+				subjectNameString = subjectData[0]
+				assMarksString = subjectData[1]
+				teeMarksString = subjectData[2] if subjectData[2] != '-' else subjectData[3]
+
+				assMarks = int(assMarksString) if assMarksString != '-' else 0
+				teeMarks = int(teeMarksString) if teeMarksString != '-' else 0
+				obtainedMarks, maxMarks = self.getObtainedMarks(subjectNameString, assMarks, teeMarks)
+				status = subjectData[4]
+
+				completeSemData[semester][subjectName] = [assMarks, teeMarks, obtainedMarks, maxMarks, status]
+		return studentName, completeSemData, percentage
 	
 	def getObtainedMarks(self, subjectName, assMarks, teeMarks):
 		if subjectName in self.subjects_data['200']:
@@ -574,84 +721,170 @@ class MessageHandler:
 			assMarks /= 2
 			obtainedMarks = round(teeMarks) + round(assMarks)
 			maxMarks = 50
-			# obtainedMarks = "{:.1f}".format(obtainedMarks)
 			return obtainedMarks, maxMarks
-			# if assMarks > 0 and teeMarks > 0:
-			# 	totalMarks += 50
-			# elif assMarks > 0:
-			# 	multiplier = .25 if subjectName not in self.subjects_data['ASS_30'] else .3
-			# 	totalMarks += multiplier * 50
-			# elif teeMarks > 0:
-			# 	multiplier = .75 if subjectName not in self.subjects_data['ASS_30'] else .7
-			# 	totalMarks += multiplier * 50
 		else:
 			obtainedMarks = round(assMarks) + round(teeMarks)
 			maxMarks = 100
-			# obtainedMarks = "{:.1f}".format(obtainedMarks)
 			return obtainedMarks, maxMarks
-			# if assMarks > 0 and teeMarks > 0:
-			# 	totalMarks += 100
-			# elif assMarks > 0:
-			# 	multiplier = .25 if subjectName not in self.subjects_data['ASS_30'] else .3
-			# 	totalMarks += multiplier * 100
-			# elif teeMarks > 0:
-			# 	multiplier = .75 if subjectName not in self.subjects_data['ASS_30'] else .7
-			# 	totalMarks += multiplier * 100
 
 	def formatResultResponse(self, resultResponse):
-		studentName = resultResponse[0]
-		percentage = resultResponse[-1]
-		# requiredResponse = f"`Sub     A   T   P   `\n\n"
+		studentName, completeSemData, percentage = resultResponse
 		requiredResponse = f"`Sub      A   T   Overall`\n"
-		semSubjects = {1: [], 2: [], 3: [], 4: [], 5: [], 6: []}
-		for subject in resultResponse[1:][:-1]:
-			for key, val in self.semester_subjects.items():
-				if subject[0] in val:
-					semSubjects[key].append(subject)
 		totalObtainedMarks = 0
 		totalMaxMarks = 0
-		for key, val in semSubjects.items():
-			if len(val) < 1: continue
-			temp = self.fillString(f"Semester {key}", " ", 25, 0)
+		for semesterNumber, semesterSubjects in completeSemData.items():
+			if len(semesterSubjects) < 1: continue
+			temp = self.fillString(f"Semester {semesterNumber}", " ", 25, 0)
 			cur = '\n`' + " " * 6 + '`' + '**' + temp + '**' + '\n'
-			totalObtainedSemesterMarks = 0
-			totalMaxSemesterMarks = 0
-			for subject in val:
-				subjectNameString = subject[0]
-				assMarksString = subject[1]
-				teeMarksString = subject[2] if subject[2] != '-' else subject[3]
+			obtainedSemesterMarks = 0
+			maxSemesterMarks = 0
+			for subjectName, subjectData in semesterSubjects.items():
+				obtainedSemesterMarks += subjectData[2]
+				maxSemesterMarks += subjectData[3]
 
-				assMarks = int(assMarksString) if assMarksString != '-' else 0
-				teeMarks = int(teeMarksString) if teeMarksString != '-' else 0
-				obtainedMarks, maxMarks = self.getObtainedMarks(subjectNameString, assMarks, teeMarks)
-				totalObtainedMarks += obtainedMarks
-				totalObtainedSemesterMarks += obtainedMarks
-				totalMaxMarks += maxMarks
-				totalMaxSemesterMarks += maxMarks
+				if subjectData[0] < 1:
+					subjectData[0] = '-'
+				if subjectData[1] < 1:
+					subjectData[1] = '-'
 
-				subjectNameString = self.fillString(subjectNameString, " ", 9, 1)
-				assMarksString = self.fillString(assMarksString, " ", 4, 1)
-				teeMarksString = self.fillString(teeMarksString, " ", 4, 1)
-				finalMarksString = self.fillString(f"{obtainedMarks}", " ", 3, -1) + '/' + self.fillString(f"{maxMarks}", " ", 4, 1)
-				statusString = subject[4]
-				# obtainedMarksString = self.fillString(str(obtainedMarks), " ", 6, 1)
-				# maxMarksString = self.fillString(str(maxMarks), " ", 6, 1)
+				subjectNameString = self.fillString(subjectName, " ", 9, 1)
+				assMarksString = self.fillString(f"{subjectData[0]}", " ", 4, 1)
+				teeMarksString = self.fillString(f"{subjectData[1]}", " ", 4, 1)
+				finalMarksString = self.fillString(f"{subjectData[2]}", " ", 3, -1) + '/' + self.fillString(f"{subjectData[3]}", " ", 4, 1)
+				statusString = subjectData[4]
 				
 				cur += f"`{subjectNameString}{assMarksString}{teeMarksString}{finalMarksString}{statusString}`\n"
-				# cur += '`' + self.fillString(subject[0], " ", 8, 1)
-				# cur += self.fillString(subject[1], " ", 4, 1)
-				# cur += self.fillString(subject[2], " ", 4, 1) if subject[2] != '-' else self.fillString(subject[3], " ", 4, 1)
-				# cur += self.fillString(subject[3], " ", 4, 1)
-				# cur += subject[4] + '`'
-				# cur += "\n"
-			percentageSemester = "{:.2f}".format(((totalObtainedSemesterMarks/totalMaxSemesterMarks)*100))
-			requiredResponse += cur + '`' + self.fillString(f"{percentageSemester}% - {totalObtainedSemesterMarks}/{totalMaxSemesterMarks}", " ", 24, -1) + '`' + '\n'
+			totalObtainedMarks += obtainedSemesterMarks
+			totalMaxMarks += maxSemesterMarks
+			percentageSemester = "{:.2f}".format(((obtainedSemesterMarks/maxSemesterMarks)*100))
+			requiredResponse += cur + '`' + self.fillString(f"{percentageSemester}% - {obtainedSemesterMarks}/{maxSemesterMarks}", " ", 24, -1) + '`' + '\n'
+		
 		totalMarks = "**Final**: __{}/{} ({}%)__".format(round(totalObtainedMarks), totalMaxMarks, percentage)
-		# percentage = (totalObtainedMarks / totalMaxMarks) * 100
-		# percentage = "{:.2f}".format(percentage)
-		# totalMarks = f"{totalObtainedMarks} out of {totalMaxMarks}"
 		requiredResponse = "**" + studentName + "**\n\n" + requiredResponse + '\n' + totalMarks# + '\n' + '**' + percentage + '**'
 		return requiredResponse.strip()
+	
+	def getPrivateLeaderBoardResponse(self):
+		leaderBoardResponse = self.getPrivateLeaderBoard()
+		leaderBoardResponse = self.formatLeaderBoardResponse(leaderBoardResponse)
+		return (1, None, leaderBoardResponse)
+	
+	def getPublicLeaderBoardResponse(self):
+		leaderBoardResponse = self.getPublicLeaderBoard()
+		leaderBoardResponse = self.formatLeaderBoardResponse(leaderBoardResponse, nameAdjustment=False)
+		return (1, None, leaderBoardResponse)
+	
+	def formatLeaderBoardResponse(self, leaderBoardResponse, nameAdjustment=True, maxCount=50):
+		requiredResponse = "🏆 **LEADERBOARD** 🏆\n\n"
+		medals = ['🥇', '🥈', '🥉', '➖']
+		for i, student in enumerate(leaderBoardResponse):
+			studentName, percentage = student.split("-")
+			if nameAdjustment:
+				studentName = self.fillString(studentName.capitalize(), " ", 14, 1)
+			requiredResponse += medals[min(3, i)] + f" `{studentName}- {percentage}%`\n" 
+			maxCount -= 1
+			if maxCount <= 0:
+				break
+		return requiredResponse
+	
+	def getPrivateLeaderBoard(self):
+		with open("./data/ignou/privateLeaderboard.txt") as file:
+			leaderBoard = file.read().strip().split('\n')
+		return leaderBoard
+	
+	def getPublicLeaderBoard(self):
+		with open("./data/ignou/publicLeaderboard.txt") as file:
+			leaderBoard = file.read().strip().split('\n')
+		for i in range(len(leaderBoard)):
+			cur = []
+			for word in leaderBoard[i].split():
+				if '-' in word:
+					cur.append(word[-6:])
+				else:
+					cur.append(word)
+			leaderBoard[i] = " ".join(cur)
+		return leaderBoard
+	
+	async def updatePrivateLeaderBoard(self):
+		try:
+			percentageData = dict()
+			with open("./data/ignou/privateStudents.txt") as file:
+				students = file.read().strip().split('\n')
+			for student in students:
+				enrolmentNumber = await self.getEnrolmentNumber(student)
+				percentage = await self.getPercentage(enrolmentNumber)
+				if percentage is None:
+					continue
+				percentageData[student] = percentage
+			sortedPercentages = sorted(percentageData.items(), key=lambda x: x[1], reverse=True)
+			leaderboard = ""
+			for student, percentage in sortedPercentages:
+				leaderboard += f"{student}-{percentage}\n"
+			with open("./data/ignou/privateLeaderboard.txt", 'w') as file:
+				file.write(leaderboard)
+			return (1, None, f"`Leaderboard Updated!`")
+		except Exception as e:
+			return (1, None, f"An error occurred:\n{e}")
+		
+	async def updatePublicLeaderBoard(self):
+		try:
+			percentageData = dict()
+			with open("./data/ignou/enrolments.txt") as file:
+				students = file.read().strip().split('\n')
+			for student in students:
+				enrolmentNumber = student.split()[-1]
+				try:
+					percentage = await self.getPercentage(enrolmentNumber, validation=True)
+					if percentage is None:
+						continue
+					percentageData[student] = percentage
+					print(enrolmentNumber)
+				except:
+					print(f"{enrolmentNumber} FAILED!!")
+					pass
+			sortedPercentages = sorted(percentageData.items(), key=lambda x: x[1], reverse=True)
+			leaderboard = ""
+			for student, percentage in sortedPercentages:
+				leaderboard += f"{student}-{percentage}\n"
+			with open("./data/ignou/publicLeaderboard.txt", 'w') as file:
+				file.write(leaderboard)
+			return (1, None, f"`Public Leaderboard Updated!`")
+		except Exception as e:
+			return (1, None, f"An error occurred:\n{e}")
+	
+	def plot_semester_data(self, data, filename):
+		"""
+		Function to plot graphs from the provided data and save them as an image file.
+
+		Parameters:
+		- data: Dictionary containing data in the specified format.
+		- filename: Name of the file to save the image.
+		"""
+
+		for serial_no, subjects in data.items():
+			fig, axes = plt.subplots(nrows=len(subjects), ncols=1, figsize=(8, 6 * len(subjects)))
+
+			for i, (subject, values) in enumerate(subjects.items()):
+				x = range(1, len(values) + 1)
+				y = values[:-1]  # Exclude binary data
+				binary_data = values[-1]
+
+				ax = axes[i] if len(subjects) > 1 else axes  # Handle multiple subplots
+
+				ax.plot(x, y, marker='o', linestyle='-')
+				ax.set_title(f'Subject: {subject}')
+				ax.set_xlabel('Data Points')
+				ax.set_ylabel('Values')
+				ax.grid(True)
+
+				if binary_data == 1:
+					ax.annotate('Binary Data Present', xy=(0.5, 0.5), xycoords='axes fraction',
+								xytext=(0.5, 0.5), textcoords='axes fraction',
+								arrowprops=dict(facecolor='black', shrink=0.05),
+								horizontalalignment='right', verticalalignment='top')
+
+			plt.tight_layout()
+			plt.savefig(f'{filename}_serial_{serial_no}_graph.png')
+			plt.close()
 
 	async def getEnrolmentResponse(self, dataParts):
 		studentName = " ".join(dataParts)
@@ -709,9 +942,6 @@ class MessageHandler:
 		return (1, None, response)
 
 	async def getStudentName(self, enrolmentNumber, program = "BCA", typeProgram = 1):
-		import requests
-		from bs4 import BeautifulSoup
-
 		url = "https://gradecard.ignou.ac.in/gradecard/view_gradecard.aspx"
 		params = {"eno":enrolmentNumber, "prog":program, "type": typeProgram}
 

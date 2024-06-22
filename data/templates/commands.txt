@@ -1,0 +1,25 @@
+**List of Commands:**
+
+**Result/Marks:**
+`ritu result [name/enrolment]`
+`ritu marks [name/enrolment]`
+
+**> Add session for seassion marks:**
+`ritu result [name/enrolment] dec23`
+`ritu marks [name/enrolment] jun22`
+
+**Astatus:** __(assignment status)__
+`ritu astatus [name/enrolment]`
+
+**Name:**
+`ritu name [name/enrolment]`
+
+**Enrolment:**
+`ritu enrol [name/enrolment]`
+
+**Subject:** __(for subject info.)__
+`ritu subject mcs12`
+`ritu subject sem5`
+
+**Status:** __(for backlogs/remaining)__
+`ritu status [name/enrolment]`
